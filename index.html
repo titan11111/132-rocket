@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover"/>
+  <title>LIFT OFF — 重力に勝て。</title>
+  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet"/>
+  <style>
+    *{
+      box-sizing:border-box;margin:0;padding:0;
+      -webkit-tap-highlight-color:transparent;
+      -webkit-touch-callout:none;
+      user-select:none;touch-action:none;
+    }
+    html,body{
+      width:100%;height:100%;
+      overflow:hidden;overscroll-behavior:none;
+      background:#000;
+      font-family:'VT323',monospace;color:#22ddff;
+    }
+    canvas{display:block;position:fixed;inset:0;}
+
+    /* HUD left */
+    #hud{
+      position:absolute;top:0;left:0;padding:14px 18px;
+      pointer-events:none;line-height:1.5;
+    }
+    .lbl{font-size:14px;color:rgba(34,221,255,0.55);letter-spacing:.1em;}
+    .val{font-size:26px;text-shadow:0 0 8px #22ddff;}
+    .val.warn{color:#ff4422;text-shadow:0 0 10px #ff4422;}
+
+    /* Right panel */
+    #rpanel{
+      position:absolute;top:14px;right:14px;
+      pointer-events:none;text-align:right;width:220px;
+    }
+    .bar-lbl{font-size:14px;color:rgba(34,221,255,0.55);letter-spacing:.08em;margin-top:8px;}
+    .bar-out{
+      width:100%;height:12px;
+      background:rgba(255,255,255,0.08);
+      border:1px solid rgba(34,221,255,0.4);border-radius:2px;
+      overflow:hidden;margin-top:3px;
+    }
+    #bar-fuel{height:100%;width:100%;background:#ffdd00;
+              box-shadow:0 0 8px #ffdd00;transition:width .08s,background .3s,box-shadow .3s;}
+    #bar-q{height:100%;width:0%;background:#22ddff;
+           box-shadow:0 0 8px #22ddff;transition:width .08s,background .2s;}
+    #q-num{font-size:16px;color:rgba(34,221,255,0.55);margin-top:2px;}
+
+    /* Phase pills */
+    #phases{margin-top:12px;font-size:18px;text-align:right;}
+    .ph{display:block;opacity:.25;transition:opacity .3s,text-shadow .3s;}
+    .ph.on{opacity:1;text-shadow:0 0 10px #22ddff;}
+
+    /* Tilt indicator */
+    #tilt-wrap{
+      position:absolute;bottom:90px;left:50%;transform:translateX(-50%);
+      pointer-events:none;text-align:center;font-size:14px;
+      color:rgba(34,221,255,0.55);letter-spacing:.1em;
+    }
+    #tilt-track{
+      width:160px;height:10px;margin:4px auto 0;
+      background:rgba(34,221,255,0.1);border:1px solid rgba(34,221,255,0.35);
+      border-radius:2px;position:relative;
+    }
+    #tilt-dot{
+      position:absolute;top:1px;width:8px;height:8px;border-radius:50%;
+      background:#22ddff;box-shadow:0 0 6px #22ddff;
+      transform:translateX(-50%);left:50%;transition:left .04s,background .2s;
+    }
+
+    /* Milestone toast */
+    #toast{
+      position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);
+      font-size:40px;text-align:center;pointer-events:none;
+      opacity:0;transition:opacity .4s;white-space:nowrap;
+      text-shadow:0 0 20px currentColor;
+    }
+
+    /* Mission info strip */
+    #mission-strip{
+      position:absolute;bottom:14px;left:14px;
+      pointer-events:none;font-size:16px;
+      color:rgba(34,221,255,0.55);max-width:50vw;
+    }
+    #mission-strip .mname{font-size:20px;color:#22ddff;text-shadow:0 0 8px #22ddff;}
+
+    /* Virtual controller */
+    #vctrl{
+      position:fixed;
+      bottom:0;left:0;right:0;
+      display:none;
+      justify-content:space-between;
+      align-items:flex-end;
+      padding:8px 16px;
+      padding-bottom:calc(8px + env(safe-area-inset-bottom));
+      z-index:200;
+      pointer-events:auto;
+    }
+    #vctrl.active{display:flex;}
+    .cv-btn{
+      width:88px;height:72px;
+      background:rgba(34,221,255,0.1);
+      border:2px solid rgba(34,221,255,0.35);
+      border-radius:10px;
+      color:#22ddff;
+      font-family:'VT323',monospace;
+      font-size:28px;line-height:1;
+      display:flex;flex-direction:column;
+      align-items:center;justify-content:center;
+      gap:4px;
+      cursor:pointer;touch-action:none;
+      -webkit-tap-highlight-color:transparent;
+      transition:background .1s,border-color .1s;
+    }
+    .cv-btn small{font-size:14px;opacity:.65;}
+    .cv-btn:active,
+    .cv-btn.pressed{
+      background:rgba(34,221,255,0.28);
+      border-color:rgba(34,221,255,0.8);
+      box-shadow:0 0 14px rgba(34,221,255,0.4);
+    }
+    #cv-thrust{
+      width:100px;height:80px;font-size:34px;
+      background:rgba(255,150,0,0.12);
+      border-color:rgba(255,150,0,0.4);color:#ff9900;
+    }
+    #cv-thrust.pressed{
+      background:rgba(255,150,0,0.3);
+      border-color:rgba(255,150,0,0.9);
+      box-shadow:0 0 18px rgba(255,150,0,0.5);
+    }
+
+    /* Overlay / menu */
+    #overlay{
+      position:absolute;inset:0;background:rgba(0,0,0,.9);
+      display:flex;align-items:center;justify-content:center;
+    }
+    #panel{
+      width:min(820px,94vw);
+      border:1px solid rgba(34,221,255,.5);border-radius:4px;
+      padding:24px;box-shadow:0 0 60px rgba(34,221,255,.15);
+    }
+    #panel h1{
+      font-size:clamp(2rem,6vw,3.2rem);color:#22ddff;
+      text-shadow:0 0 20px #22ddff;margin-bottom:4px;
+    }
+    #panel .sub{font-size:1.1rem;color:#aaa;margin-bottom:20px;}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+    @media(max-width:560px){.grid2{grid-template-columns:1fr;}}
+    .card{border:1px solid rgba(34,221,255,.25);border-radius:4px;padding:16px;}
+    .card h2{font-size:1.4rem;color:#22ddff;margin-bottom:12px;}
+    .btnrow{display:flex;gap:10px;flex-wrap:wrap;}
+    button{
+      font-family:'VT323',monospace;font-size:1.15rem;
+      border:1px solid rgba(34,221,255,.5);background:rgba(34,221,255,.06);
+      color:#22ddff;padding:8px 14px;border-radius:2px;cursor:pointer;
+      transition:background .15s,box-shadow .15s;
+    }
+    button:hover{background:rgba(34,221,255,.18);box-shadow:0 0 12px rgba(34,221,255,.4);}
+    button:active{transform:translateY(1px);}
+    .note{font-size:.85rem;color:#888;margin-top:10px;}
+
+    /* End screen */
+    #endscreen{
+      position:absolute;inset:0;background:rgba(0,0,0,.87);
+      display:none;align-items:center;justify-content:center;
+    }
+    #endinner{
+      width:min(480px,92vw);
+      border:1px solid rgba(34,221,255,.5);border-radius:4px;padding:24px;
+    }
+    #end-title{font-size:2.2rem;margin-bottom:6px;}
+    #end-title.ok{color:#22ddff;text-shadow:0 0 16px #22ddff;}
+    #end-title.ng{color:#ff4422;text-shadow:0 0 16px #ff4422;}
+    #end-reason{color:#aaa;font-size:1rem;margin-bottom:14px;}
+    #end-telem{
+      font-family:monospace;font-size:.82rem;color:#ccc;
+      border-top:1px solid #333;padding-top:12px;white-space:pre;
+    }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<!-- HUD left -->
+<div id="hud">
+  <div class="lbl">ALTITUDE</div>
+  <div id="v-alt" class="val">0 m</div>
+  <div class="lbl">VELOCITY</div>
+  <div id="v-vel" class="val">0 m/s</div>
+  <div class="lbl">SCORE</div>
+  <div id="v-score" class="val">0</div>
+</div>
+
+<!-- HUD right -->
+<div id="rpanel">
+  <div class="bar-lbl">FUEL</div>
+  <div class="bar-out"><div id="bar-fuel"></div></div>
+  <div class="bar-lbl">MAX-Q</div>
+  <div class="bar-out"><div id="bar-q"></div></div>
+  <div id="q-num">0 Pa</div>
+  <div id="phases">
+    <span class="ph" id="ph-LAUNCH">▶ LAUNCH</span>
+    <span class="ph" id="ph-MAX-Q">▶ MAX-Q</span>
+    <span class="ph" id="ph-MECO">▶ MECO</span>
+    <span class="ph" id="ph-COAST">▶ COAST</span>
+    <span class="ph" id="ph-SPACE">▶ SPACE</span>
+  </div>
+</div>
+
+<!-- Tilt -->
+<div id="tilt-wrap">
+  TILT
+  <div id="tilt-track"><div id="tilt-dot"></div></div>
+</div>
+
+<!-- Milestone toast -->
+<div id="toast"></div>
+
+<!-- Mission info -->
+<div id="mission-strip">
+  <div id="mname" class="mname"></div>
+  <div id="mobjective"></div>
+</div>
+
+<!-- Virtual controller (shown on touch devices) -->
+<div id="vctrl">
+  <button type="button" class="cv-btn" id="cv-left">←<small>傾き</small></button>
+  <button type="button" class="cv-btn" id="cv-thrust">🔥<small>推力</small></button>
+  <button type="button" class="cv-btn" id="cv-right">→<small>傾き</small></button>
+</div>
+
+<!-- Menu -->
+<div id="overlay">
+  <div id="panel">
+    <h1>LIFT OFF</h1>
+    <div class="sub">重力に勝て。— リアルロケット打ち上げシミュレーター</div>
+    <div class="grid2">
+      <div class="card">
+        <h2>🚀 ミッション選択</h2>
+        <div class="btnrow">
+          <button data-m="starlink">STARLINK-α<br><small>Max-Q制約</small></button>
+          <button data-m="demo">HEAVY DEMO<br><small>燃料効率</small></button>
+          <button data-m="abort">ABORT TEST<br><small>弾道飛行</small></button>
+        </div>
+        <p class="note">
+          SPACE = 推力 &nbsp;|&nbsp; ←→ = 傾き &nbsp;|&nbsp; R = リセット &nbsp;|&nbsp; M = メニュー<br>
+          フェーズ: LAUNCH → MAX-Q → MECO → COAST → SPACE
+        </p>
+      </div>
+      <div class="card">
+        <h2>⚙ オプション</h2>
+        <div class="btnrow">
+          <button id="btn-edu">物理モード: OFF</button>
+          <button id="btn-assist">姿勢アシスト: OFF</button>
+        </div>
+        <p class="note">
+          物理モード: 力の内訳をリアルタイム表示<br>
+          姿勢アシスト: 垂直に自動補正（学習用）
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- End screen -->
+<div id="endscreen">
+  <div id="endinner">
+    <div id="end-title"></div>
+    <div id="end-reason"></div>
+    <pre id="end-telem"></pre>
+    <div class="btnrow" style="margin-top:16px;">
+      <button id="btn-restart">RESTART [R]</button>
+      <button id="btn-back">MENU [M]</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){'use strict';
+
+/* ── Canvas ── */
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+
+/* ── UI refs ── */
+const vAlt=document.getElementById('v-alt');
+const vVel=document.getElementById('v-vel');
+const vScore=document.getElementById('v-score');
+const barFuel=document.getElementById('bar-fuel');
+const barQ=document.getElementById('bar-q');
+const qNum=document.getElementById('q-num');
+const tiltDot=document.getElementById('tilt-dot');
+const toastEl=document.getElementById('toast');
+const overlay=document.getElementById('overlay');
+const endscreen=document.getElementById('endscreen');
+const endTitle=document.getElementById('end-title');
+const endReason=document.getElementById('end-reason');
+const endTelem=document.getElementById('end-telem');
+const mnameEl=document.getElementById('mname');
+const mobjEl=document.getElementById('mobjective');
+// touchHint removed
+
+/* ── Physics constants (original, untouched) ── */
+const G0=9.81,RHO0=1.225,H_SCALE=8500,R_EARTH=6371000;
+const CD=0.3,A_REF=10,M_DRY=5000,FUEL0=45000,F_MAX=800000,FUEL_RATE=150;
+
+/* ── Missions (original) ── */
+const MISSIONS={
+  starlink:{
+    name:'STARLINK-α',label:'Max-Q 制約ミッション',
+    obj:'高度100km到達。動圧を制限以下に保て。姿勢はできるだけ垂直に。',
+    maxQ:38000,targetAlt:100000,needMECO:true,mecoAlt:60000,tiltLim:25,
+    sc:{fuel:1.2,q:1.0,tilt:0.8,time:0.2}
+  },
+  demo:{
+    name:'HEAVY DEMO',label:'燃料効率ミッション',
+    obj:'高度100km到達。燃料をできるだけ残せ。Max-Q制約は緩め。',
+    maxQ:65000,targetAlt:100000,needMECO:false,mecoAlt:null,tiltLim:35,
+    sc:{fuel:2.2,q:0.5,tilt:0.4,time:0.4}
+  },
+  abort:{
+    name:'ABORT TEST',label:'弾道飛行ミッション',
+    obj:'30km到達後に推力停止。落下速度を管理して生還せよ。',
+    maxQ:50000,targetAlt:70000,needMECO:true,mecoAlt:30000,tiltLim:20,
+    sc:{fuel:0.7,q:0.9,tilt:0.7,time:0.3}
+  }
+};
+
+/* ── State ── */
+let mission=null,mKey=null;
+let eduMode=false,assistMode=false;
+let phase='MENU';
+let rocket=null;
+let particles=[];
+let stars=[];
+let clouds=[];
+let bgStars=[];
+
+/* ── Telemetry ── */
+let elapsed=0,peakQ=0,peakAlt=0,peakSpd=0,lastDynQ=0;
+let badQ=false,badAngle=false,mecoOk=false;
+
+/* ── FX ── */
+let shakeX=0,shakeY=0,shakeD=0;
+let flashR=0,flashG=0,flashB=0,flashA=0;
+let milestones=new Set();
+let toastTimer=0;
+let frame=0;
+
+/* ── Input ── */
+const keys={};
+
+/* ── Logical dimensions (used by all game code) ── */
+let W=window.innerWidth, H=window.innerHeight;
+
+/* ──────────────────────────────────────────
+   INIT
+────────────────────────────────────────── */
+function resize(){
+  W=window.innerWidth; H=window.innerHeight;
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  canvas.style.width=W+'px'; canvas.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(rocket) rocket.x=W/2;
+  buildStars();
+  buildClouds();
+}
+window.addEventListener('resize',resize);
+
+function buildStars(){
+  stars=[];
+  for(let i=0;i<600;i++){
+    stars.push({
+      x:Math.random()*W,
+      y:Math.random()*H,
+      r:Math.random()*1.6+0.2,
+      ph:Math.random()*Math.PI*2,
+      spd:0.02+Math.random()*0.04
+    });
+  }
+  // Milky way static stars (brighter cluster)
+  bgStars=[];
+  for(let i=0;i<200;i++){
+    bgStars.push({
+      x:Math.random()*W,
+      y:Math.random()*H*0.6,
+      r:Math.random()*0.8+0.1,
+      a:Math.random()*0.4+0.1
+    });
+  }
+}
+
+function buildClouds(){
+  clouds=[];
+  // 3層: 高度・速度・透明度が異なる薄い雲の群れ
+  const defs=[
+    // layer0: 低層・ゆっくり・やや濃い積雲
+    {count:5, wMin:90, wMax:160, hMin:18, hMax:30, opacity:0.62, speed:0.2, yFrac:0.55},
+    // layer1: 中層・中速・薄い巻積雲
+    {count:4, wMin:60, wMax:110, hMin:10, hMax:18, opacity:0.38, speed:0.5, yFrac:0.35},
+    // layer2: 高層・速い・ごく薄い巻雲
+    {count:3, wMin:40, wMax:80,  hMin:6,  hMax:11, opacity:0.22, speed:0.85,yFrac:0.18},
+  ];
+  defs.forEach((d,li)=>{
+    for(let i=0;i<d.count;i++){
+      const w=d.wMin+Math.random()*(d.wMax-d.wMin);
+      const h=d.hMin+Math.random()*(d.hMax-d.hMin);
+      // 同じ高度帯に散らばるよう分割配置
+      const slot=i/d.count;
+      clouds.push({
+        layer:li,
+        x:slot*W*1.4+Math.random()*W*0.4-W*0.1,
+        baseY:H*(d.yFrac+Math.random()*0.12-0.06),
+        w,h,
+        opacity:d.opacity*(0.8+Math.random()*0.4),
+        speed:d.speed*(0.8+Math.random()*0.4),
+      });
+    }
+  });
+}
+
+function initRocket(){
+  rocket={
+    x:W/2, y:0,
+    vx:0, vy:0,
+    angle:0,
+    mass:M_DRY+FUEL0,
+    fuel:FUEL0,
+    isThrusting:false,
+    crashed:false,
+    inSpace:false,
+    trailPts:[]
+  };
+}
+
+/* ──────────────────────────────────────────
+   INPUT
+────────────────────────────────────────── */
+window.addEventListener('keydown',e=>{
+  keys[e.code]=true;
+  if(e.code==='KeyR') resetGame();
+  if(e.code==='KeyM') showMenu();
+},{passive:false});
+window.addEventListener('keyup',e=>{keys[e.code]=false;});
+
+/* ダブルタップ防止（iOS）— 仮想ボタンは除外して干渉しない */
+let lastTap=0;
+document.addEventListener('touchstart',e=>{
+  if(e.target.closest&&e.target.closest('#vctrl')) return;
+  const now=Date.now();
+  if(now-lastTap<300) e.preventDefault();
+  lastTap=now;
+},{passive:false});
+document.addEventListener('dblclick',e=>e.preventDefault());
+document.addEventListener('contextmenu',e=>e.preventDefault());
+
+/* 仮想コントローラー（bindPointer方式） */
+function bindPointer(el,codes){
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    codes.forEach(c=>{keys[c]=true;});
+    el.classList.add('pressed');
+  },{passive:false});
+  const up=()=>{codes.forEach(c=>{keys[c]=false;});el.classList.remove('pressed');};
+  el.addEventListener('pointerup',up);
+  el.addEventListener('pointercancel',up);
+}
+
+/* タッチデバイス検出 → コントローラー表示 */
+if(navigator.maxTouchPoints>0){
+  document.getElementById('vctrl').classList.add('active');
+}
+bindPointer(document.getElementById('cv-left'),  ['ArrowLeft']);
+bindPointer(document.getElementById('cv-thrust'), ['Space']);
+bindPointer(document.getElementById('cv-right'),  ['ArrowRight']);
+
+/* ──────────────────────────────────────────
+   MENU / GAME FLOW
+────────────────────────────────────────── */
+document.querySelectorAll('[data-m]').forEach(b=>{
+  b.addEventListener('click',()=>startMission(b.dataset.m));
+});
+document.getElementById('btn-edu').addEventListener('click',function(){
+  eduMode=!eduMode;
+  this.textContent=`物理モード: ${eduMode?'ON':'OFF'}`;
+});
+document.getElementById('btn-assist').addEventListener('click',function(){
+  assistMode=!assistMode;
+  this.textContent=`姿勢アシスト: ${assistMode?'ON':'OFF'}`;
+});
+document.getElementById('btn-restart').addEventListener('click',resetGame);
+document.getElementById('btn-back').addEventListener('click',showMenu);
+
+function showMenu(){
+  phase='MENU';
+  overlay.style.display='flex';
+  endscreen.style.display='none';
+}
+
+function startMission(key){
+  mKey=key;
+  mission=MISSIONS[key];
+  overlay.style.display='none';
+  endscreen.style.display='none';
+  milestones.clear();
+  elapsed=0;peakQ=0;peakAlt=0;peakSpd=0;lastDynQ=0;
+  badQ=false;badAngle=false;mecoOk=false;
+  mnameEl.textContent=mission.name;
+  mobjEl.textContent=mission.obj;
+  // Show touch hint on touch device
+  if(navigator.maxTouchPoints>0) touchHint.style.display='block';
+  resetGame(true);
+}
+
+function resetGame(isMissionStart=false){
+  if(!mission){showMenu();return;}
+  initRocket();
+  particles=[];
+  endscreen.style.display='none';
+  phase='LAUNCH';
+  if(!isMissionStart){
+    elapsed=0;peakQ=0;peakAlt=0;peakSpd=0;lastDynQ=0;
+    badQ=false;badAngle=false;mecoOk=false;
+    milestones.clear();
+  }
+  setPhasePills();
+}
+
+function setPhasePills(){
+  ['LAUNCH','MAX-Q','MECO','COAST','SPACE'].forEach(p=>{
+    const el=document.getElementById('ph-'+p);
+    if(el) el.className='ph'+(phase===p?' on':'');
+  });
+}
+
+/* ──────────────────────────────────────────
+   FX HELPERS
+────────────────────────────────────────── */
+function shake(amt){
+  shakeX=(Math.random()-.5)*amt;
+  shakeY=(Math.random()-.5)*amt;
+  shakeD=0.82;
+}
+function flash(r,g,b,a){flashR=r;flashG=g;flashB=b;flashA=a;}
+
+let toastTO=null;
+function showToast(text,color='#22ddff'){
+  toastEl.textContent=text;
+  toastEl.style.color=color;
+  toastEl.style.textShadow=`0 0 24px ${color}`;
+  toastEl.style.opacity='1';
+  clearTimeout(toastTO);
+  toastTO=setTimeout(()=>{toastEl.style.opacity='0';},2200);
+}
+
+function checkMilestones(y){
+  const ms=[
+    [1000,   '☁  CLOUD BREAK',    '#ffffff'],
+    [20000,  '★  STRATOSPHERE',   '#22ddff'],
+    [50000,  '◆  MESOSPHERE',     '#aa88ff'],
+    [80000,  '▲  KÁRMÁN APPROACH','#ff8800'],
+    [100000, '🚀  SPACE !',        '#22ffaa'],
+  ];
+  for(const [alt,label,col] of ms){
+    if(y>=alt&&!milestones.has(alt)){
+      milestones.add(alt);
+      showToast(label,col);
+      const ri=parseInt(col.replace('#','').slice(0,2),16);
+      const gi=parseInt(col.replace('#','').slice(2,4),16);
+      const bi=parseInt(col.replace('#','').slice(4,6),16);
+      flash(ri,gi,bi,0.22);
+    }
+  }
+}
+
+/* ──────────────────────────────────────────
+   SCORE / END
+────────────────────────────────────────── */
+function computeScore(){
+  if(!mission)return 0;
+  const altS=Math.min(rocket.y/mission.targetAlt,1)*600;
+  const fuelS=(rocket.fuel/FUEL0)*400*mission.sc.fuel;
+  const qOver=Math.max(0,peakQ-mission.maxQ);
+  const qP=(qOver/mission.maxQ)*500*mission.sc.q;
+  const tDeg=Math.abs(rocket.angle*180/Math.PI);
+  const tOver=Math.max(0,tDeg-mission.tiltLim);
+  const tP=(tOver/Math.max(1,mission.tiltLim))*300*mission.sc.tilt;
+  const tmP=(elapsed/120)*200*mission.sc.time;
+  return Math.max(0,Math.round(altS+fuelS-qP-tP-tmP));
+}
+
+function endMission(ok,reason){
+  phase=ok?'SUCCESS':'FAIL';
+  rocket.crashed=true;
+  shake(ok?5:22);
+  flash(ok?34:255, ok?221:44, ok?255:34, 0.35);
+  const sc=computeScore();
+  endTitle.textContent=ok?'✓ MISSION COMPLETE':'✕ MISSION FAILED';
+  endTitle.className=ok?'ok':'ng';
+  endReason.textContent=reason;
+  const lines=[
+    `time       : ${elapsed.toFixed(1)} s`,
+    `peak alt   : ${Math.round(peakAlt).toLocaleString()} m`,
+    `peak speed : ${Math.round(peakSpd).toLocaleString()} m/s`,
+    `peak Q     : ${Math.round(peakQ).toLocaleString()} Pa  (limit ${mission.maxQ.toLocaleString()} Pa)`,
+    `fuel left  : ${Math.round(rocket.fuel).toLocaleString()} kg`,
+    `MECO       : ${mission.needMECO?(mecoOk?'OK':'NOT TRIGGERED'):'N/A'}`,
+    `angle rule : ${badAngle?'VIOLATED':'OK'}`,
+    `Max-Q rule : ${badQ?'VIOLATED':'OK'}`,
+    `SCORE      : ${sc.toLocaleString()}`,
+  ];
+  endTelem.textContent=lines.join('\n');
+  endscreen.style.display='flex';
+}
+
+/* ──────────────────────────────────────────
+   PHYSICS UPDATE (original model preserved)
+────────────────────────────────────────── */
+function updatePhysics(dt){
+  if(!mission||rocket.crashed)return;
+  elapsed+=dt;
+
+  // --- Controls ---
+  const thrust=keys['Space']&&rocket.fuel>0;
+  rocket.isThrusting=thrust;
+  if(keys['ArrowLeft'])  rocket.angle-=0.025;
+  if(keys['ArrowRight']) rocket.angle+=0.025;
+  if(assistMode) rocket.angle*=0.985;
+
+  // --- Gravity (altitude-dependent) ---
+  const g=G0*Math.pow(R_EARTH/(R_EARTH+rocket.y),2);
+
+  // --- Thrust ---
+  let fx=0,fy=0;
+  if(thrust){
+    fx=Math.sin(rocket.angle)*F_MAX;
+    fy=Math.cos(rocket.angle)*F_MAX;
+    rocket.fuel=Math.max(0,rocket.fuel-FUEL_RATE*dt);
+    rocket.mass=M_DRY+rocket.fuel;
+    if(Math.random()<0.25) shake(1.2);
+  }
+
+  // --- Atmosphere ---
+  const rho=RHO0*Math.exp(-rocket.y/H_SCALE);
+  const v2=rocket.vx*rocket.vx+rocket.vy*rocket.vy;
+  const spd=Math.sqrt(v2);
+  const drag=0.5*rho*v2*CD*A_REF;
+  const dynQ=0.5*rho*v2;
+
+  lastDynQ=dynQ;
+  if(dynQ>peakQ) peakQ=dynQ;
+  if(spd>peakSpd) peakSpd=spd;
+  if(rocket.y>peakAlt) peakAlt=rocket.y;
+
+  let ddx=0,ddy=0;
+  if(spd>0){ddx=-(rocket.vx/spd)*drag; ddy=-(rocket.vy/spd)*drag;}
+
+  // --- Integrate ---
+  const ax=(fx+ddx)/rocket.mass;
+  const ay=(fy+ddy-rocket.mass*g)/rocket.mass;
+  rocket.vx+=ax*dt;
+  rocket.vy+=ay*dt;
+  rocket.y +=rocket.vy*dt;
+  rocket.x +=rocket.vx*dt*0.01;
+  rocket.x=Math.max(40,Math.min(W-40,rocket.x));
+
+  // --- Violations ---
+  const aDeg=Math.abs(rocket.angle*180/Math.PI);
+  if(aDeg>mission.tiltLim) badAngle=true;
+  if(peakQ>mission.maxQ){
+    badQ=true;
+    shake(3);
+    flash(255,44,34,0.12);
+  }
+
+  // --- Phase transitions (original logic) ---
+  if(phase==='LAUNCH'&&dynQ>mission.maxQ*0.35) phase='MAX-Q';
+  if(phase==='MAX-Q'&&mission.needMECO&&rocket.y>mission.mecoAlt) phase='MECO';
+  if(phase==='MECO'&&mission.needMECO&&rocket.y>mission.mecoAlt){
+    if(!rocket.isThrusting) mecoOk=true;
+    if(mecoOk) phase='COAST';
+  }
+  if(phase==='MAX-Q'&&!mission.needMECO&&rocket.y>60000) phase='COAST';
+  if(rocket.y>100000&&!rocket.inSpace) rocket.inSpace=true;
+  if(rocket.inSpace&&phase!=='SUCCESS'&&phase!=='FAIL') phase='SPACE';
+  setPhasePills();
+
+  // --- Milestones ---
+  checkMilestones(rocket.y);
+
+  // --- Ground ---
+  if(rocket.y<0){
+    if(rocket.vy<-10){endMission(false,'着地速度超過 — Rocket crashed.');return;}
+    rocket.y=0;rocket.vy=0;rocket.vx=0;
+  }
+
+  // --- Win / Fail ---
+  if(rocket.y>=mission.targetAlt){
+    const ok=!badQ&&!badAngle&&(!mission.needMECO||mecoOk);
+    if(ok){
+      endMission(true,'制約を満たして目標高度に到達！');
+    } else {
+      const r=[];
+      if(badQ) r.push('Max-Q超過');
+      if(badAngle) r.push('傾き超過');
+      if(mission.needMECO&&!mecoOk) r.push('MECO未達');
+      endMission(false,`目標到達、しかし制約違反: ${r.join('、')}`);
+    }
+    return;
+  }
+
+  // High-speed shake
+  if(thrust&&spd>600) shake(0.7);
+
+  // --- HUD ---
+  const altKm=rocket.y/1000;
+  vAlt.textContent=rocket.y>1000?`${altKm.toFixed(1)} km`:`${Math.floor(rocket.y)} m`;
+  vVel.textContent=`${Math.floor(spd).toLocaleString()} m/s`;
+  vScore.textContent=computeScore().toLocaleString();
+
+  const ff=rocket.fuel/FUEL0;
+  barFuel.style.width=`${ff*100}%`;
+  const fc=ff>0.5?'#ffdd00':ff>0.2?'#ff8800':'#ff4422';
+  barFuel.style.background=fc;
+  barFuel.style.boxShadow=`0 0 8px ${fc}`;
+
+  const qf=Math.min(dynQ/mission.maxQ,1);
+  barQ.style.width=`${qf*100}%`;
+  const qc=qf<0.7?'#22ddff':qf<0.9?'#ff8800':'#ff4422';
+  barQ.style.background=qc;
+  barQ.style.boxShadow=`0 0 8px ${qc}`;
+  qNum.textContent=`${Math.floor(dynQ).toLocaleString()} Pa`;
+  qNum.style.color=qf>0.85?'#ff4422':'rgba(34,221,255,0.55)';
+
+  const tf=Math.max(-1,Math.min(1,rocket.angle/(mission.tiltLim*Math.PI/180)));
+  tiltDot.style.left=`${(tf+1)/2*100}%`;
+  tiltDot.style.background=Math.abs(tf)>0.8?'#ff4422':'#22ddff';
+  tiltDot.style.boxShadow=`0 0 6px ${Math.abs(tf)>0.8?'#ff4422':'#22ddff'}`;
+}
+
+/* ──────────────────────────────────────────
+   PARTICLES
+────────────────────────────────────────── */
+function spawnParticles(rx,ry,angle,count){
+  for(let i=0;i<count;i++){
+    const off=20+Math.random()*6;
+    const px=rx-Math.sin(angle)*off;
+    const py=ry+Math.cos(angle)*off;
+    const spread=(Math.random()-.5)*1.6;
+    const spd=2+Math.random()*5;
+    const vx=-Math.sin(angle)*(-spd*0.4)+spread;
+    const vy=Math.cos(angle)*spd+Math.random()*1.5;
+    const hot=Math.random();
+    let col;
+    if(hot>0.65)      col=[255,255,180+Math.random()*75];
+    else if(hot>0.35) col=[255,100+Math.random()*120,0];
+    else              col=[220,50+Math.random()*40,0];
+    particles.push({
+      x:px,y:py,vx,vy,
+      r:2.5+Math.random()*5,
+      life:1,dec:0.025+Math.random()*0.03,
+      col
+    });
+  }
+}
+
+/* ──────────────────────────────────────────
+   DRAW
+────────────────────────────────────────── */
+function draw(){
+  const altKm=rocket?rocket.y/1000:0;
+
+  // Screen shake
+  const doShake=shakeX!==0||shakeY!==0;
+  if(doShake){
+    ctx.save();
+    ctx.translate(Math.round(shakeX),Math.round(shakeY));
+    shakeX*=shakeD; shakeY*=shakeD;
+    if(Math.abs(shakeX)<0.1){shakeX=0;shakeY=0;}
+  }
+
+  // ── Sky gradient ──
+  const tSky=Math.min(altKm/90,1);
+  // Day sky: rgb(70,130,220) → space: rgb(0,0,15)
+  const sR=Math.round(70*(1-tSky));
+  const sG=Math.round(130*(1-tSky));
+  const sB=Math.round(220-altKm*2.3);
+  const skyGrad=ctx.createLinearGradient(0,0,0,H);
+  skyGrad.addColorStop(0,`rgb(${sR},${sG},${Math.max(0,sB)})`);
+  skyGrad.addColorStop(1,`rgb(${Math.round(sR*0.4)},${Math.round(sG*0.3)},${Math.max(0,Math.round(sB*0.5))})`);
+  ctx.fillStyle=skyGrad;
+  ctx.fillRect(0,0,W,H);
+
+  // ── Milky way / deep stars (always visible in space) ──
+  if(altKm>15){
+    const mwA=Math.min(1,(altKm-15)/25);
+    ctx.save();
+    ctx.globalAlpha=mwA*0.25;
+    // Milky band
+    const mwGrad=ctx.createLinearGradient(0,H*0.1,W,H*0.7);
+    mwGrad.addColorStop(0,'transparent');
+    mwGrad.addColorStop(0.3,'rgba(160,160,200,0.4)');
+    mwGrad.addColorStop(0.7,'rgba(140,120,180,0.3)');
+    mwGrad.addColorStop(1,'transparent');
+    ctx.fillStyle=mwGrad;
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
+    // Static bg stars
+    ctx.save();
+    ctx.globalAlpha=mwA*0.6;
+    for(const s of bgStars){
+      ctx.fillStyle=`rgba(220,220,255,${s.a})`;
+      ctx.beginPath();
+      ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // ── Twinkling stars ──
+  if(altKm>10){
+    const sA=Math.min(1,(altKm-10)/20);
+    ctx.save();
+    for(const s of stars){
+      const tw=0.55+0.45*Math.sin(frame*s.spd+s.ph);
+      ctx.globalAlpha=sA*tw;
+      // parallax: stars shift slightly with altitude
+      const sy=(s.y+altKm*1.8)%H;
+      ctx.fillStyle='#ffffff';
+      ctx.beginPath();
+      ctx.arc(s.x,sy,s.r,0,Math.PI*2);
+      ctx.fill();
+      // Bright star cross flare
+      if(s.r>1.2&&tw>0.85){
+        ctx.globalAlpha=sA*tw*0.4;
+        ctx.fillRect(s.x-s.r*3,sy-0.5,s.r*6,1);
+        ctx.fillRect(s.x-0.5,sy-s.r*3,1,s.r*6);
+      }
+    }
+    ctx.restore();
+  }
+
+  // ── Ground & launchpad ──
+  if(altKm<8){
+    const gAlpha=Math.max(0,1-altKm/6);
+    const groundY=H-60+altKm*700;
+    ctx.save();
+    ctx.globalAlpha=gAlpha;
+    // Deep earth
+    ctx.fillStyle='#0d2a08';
+    ctx.fillRect(0,groundY+8,W,H);
+    // Grass surface
+    const grassGrad=ctx.createLinearGradient(0,groundY,0,groundY+30);
+    grassGrad.addColorStop(0,'#2d7a1e');
+    grassGrad.addColorStop(1,'#1a4a10');
+    ctx.fillStyle=grassGrad;
+    ctx.fillRect(0,groundY,W,30);
+    // Terrain undulation
+    ctx.fillStyle='#3a9a28';
+    ctx.beginPath();
+    ctx.moveTo(0,groundY);
+    for(let x=0;x<=W;x+=20){
+      ctx.lineTo(x,groundY-3+Math.sin(x*0.05)*3);
+    }
+    ctx.lineTo(W,groundY+10);ctx.lineTo(0,groundY+10);ctx.closePath();ctx.fill();
+    // Launchpad concrete
+    const lpX=W/2;
+    ctx.fillStyle='#556677';
+    ctx.fillRect(lpX-50,groundY-6,100,8);
+    ctx.fillStyle='#778899';
+    ctx.fillRect(lpX-40,groundY-5,80,3);
+    // Support arms
+    ctx.strokeStyle='#445566';ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(lpX-30,groundY-6);ctx.lineTo(lpX-30,groundY-70);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(lpX+30,groundY-6);ctx.lineTo(lpX+30,groundY-70);ctx.stroke();
+    // Arm details
+    ctx.strokeStyle='#667788';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(lpX-30,groundY-30);ctx.lineTo(lpX-8,groundY-30);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(lpX+30,groundY-30);ctx.lineTo(lpX+8,groundY-30);ctx.stroke();
+    // Horizon haze
+    const hazeG=ctx.createLinearGradient(0,groundY-80,0,groundY);
+    hazeG.addColorStop(0,'rgba(80,160,100,0)');
+    hazeG.addColorStop(1,'rgba(80,160,100,0.15)');
+    ctx.fillStyle=hazeG;
+    ctx.fillRect(0,groundY-80,W,80);
+    ctx.restore();
+  }
+
+  // ── Clouds (3 parallax layers) ──
+  const cAlpha=Math.max(0,1-altKm/12);
+  if(cAlpha>0.01&&rocket){
+    ctx.save();
+    for(const c of clouds){
+      // Each layer scrolls differently with altitude
+      const scroll=altKm*(30+c.layer*100)*c.speed;
+      let dy=c.baseY+scroll;
+      // wrap vertically
+      dy=((dy%H)+H)%H;
+      const a=c.opacity*cAlpha;
+      if(a<0.01) continue;
+      ctx.globalAlpha=a;
+      drawCloud(ctx,c.x,dy,c.w,c.h);
+    }
+    ctx.restore();
+  }
+
+  // ── Atmospheric glow (reentry/heating effect at very high speed) ──
+  if(rocket){
+    const spd=Math.sqrt(rocket.vx*rocket.vx+rocket.vy*rocket.vy);
+    if(spd>1500&&altKm<80){
+      const heatA=Math.min(0.18,(spd-1500)/5000);
+      ctx.fillStyle=`rgba(255,120,0,${heatA})`;
+      ctx.fillRect(0,0,W,H);
+    }
+  }
+
+  // ── Exhaust particles ──
+  ctx.save();
+  particles=particles.filter(p=>p.life>0);
+  for(const p of particles){
+    p.x+=p.vx; p.y+=p.vy;
+    p.vy+=0.25;
+    p.life-=p.dec;
+    if(p.life<=0) continue;
+    const a=p.life;
+    ctx.globalAlpha=a*0.9;
+    ctx.shadowBlur=10;
+    ctx.shadowColor=`rgb(${p.col[0]},${p.col[1]},${p.col[2]})`;
+    ctx.fillStyle=`rgba(${p.col[0]},${p.col[1]},${p.col[2]},1)`;
+    ctx.beginPath();
+    ctx.arc(p.x,p.y,p.r*a,0,Math.PI*2);
+    ctx.fill();
+  }
+  ctx.shadowBlur=0;
+  ctx.restore();
+
+  // ── Rocket ──
+  if(rocket){
+    const rx=rocket.x;
+    const ry=H-130;
+    const spd=Math.sqrt(rocket.vx*rocket.vx+rocket.vy*rocket.vy);
+
+    // Trail / afterimage at high speed
+    if(spd>250){
+      const trailLen=Math.min(12,Math.floor(spd/120));
+      for(let i=trailLen;i>=1;i--){
+        const frac=i/trailLen;
+        ctx.save();
+        ctx.globalAlpha=0.06*frac;
+        ctx.translate(
+          rx-Math.sin(rocket.angle)*i*2.5,
+          ry+Math.cos(rocket.angle)*i*1.5
+        );
+        ctx.rotate(rocket.angle);
+        drawRocket(ctx,false,false);
+        ctx.restore();
+      }
+    }
+
+    // Main rocket
+    ctx.save();
+    ctx.translate(rx,ry);
+    ctx.rotate(rocket.angle);
+    drawRocket(ctx,rocket.isThrusting,true);
+    ctx.restore();
+
+    // Spawn exhaust particles
+    if(rocket.isThrusting&&rocket.fuel>0){
+      const cnt=8+Math.floor(Math.random()*8);
+      spawnParticles(rx,ry,rocket.angle,cnt);
+    }
+
+    // Warning overlays
+    if(mission&&!rocket.crashed){
+      const qf=lastDynQ/mission.maxQ;
+      const aDeg=Math.abs(rocket.angle*180/Math.PI);
+      const blink=Math.sin(frame*0.28)>0;
+
+      if((badQ||qf>0.88)&&blink){
+        ctx.save();
+        ctx.font='bold 30px VT323,monospace';
+        ctx.textAlign='center';
+        ctx.shadowBlur=18;
+        ctx.shadowColor='#ff4422';
+        ctx.fillStyle='#ff4422';
+        ctx.fillText('⚠  MAX-Q  WARNING',W/2,58);
+        ctx.shadowBlur=0;
+        ctx.restore();
+      }
+      if(aDeg>mission.tiltLim*0.85&&Math.sin(frame*0.22+1)>0){
+        ctx.save();
+        ctx.font='bold 24px VT323,monospace';
+        ctx.textAlign='center';
+        ctx.shadowBlur=14;
+        ctx.shadowColor='#ff8800';
+        ctx.fillStyle='#ff8800';
+        ctx.fillText('⚠  TILT  LIMIT',W/2,96);
+        ctx.shadowBlur=0;
+        ctx.restore();
+      }
+    }
+  }
+
+  // ── Screen flash ──
+  if(flashA>0.01){
+    ctx.fillStyle=`rgba(${flashR},${flashG},${flashB},${flashA})`;
+    ctx.fillRect(0,0,W,H);
+    flashA*=0.86;
+  }
+
+  // ── Scanlines (subtle CRT feel) ──
+  ctx.save();
+  ctx.globalAlpha=0.035;
+  ctx.fillStyle='#000';
+  for(let y=0;y<H;y+=4){ctx.fillRect(0,y,W,2);}
+  ctx.restore();
+
+  if(doShake) ctx.restore();
+}
+
+/* ── Draw cloud (自然な層状雲) ── */
+function drawCloud(ctx,x,y,w,h){
+  // 横長のソフトな楕円グラデ = 巻雲・高積雲っぽい質感
+  const cx=x+w/2, cy=y;
+
+  // メイン雲体: 放射状グラデーション（端に向かって消える）
+  const g=ctx.createRadialGradient(cx,cy,0,cx,cy,w*0.52);
+  g.addColorStop(0,  'rgba(255,255,255,0.88)');
+  g.addColorStop(0.4,'rgba(248,252,255,0.65)');
+  g.addColorStop(0.75,'rgba(240,248,255,0.25)');
+  g.addColorStop(1,  'rgba(255,255,255,0)');
+  ctx.fillStyle=g;
+  ctx.beginPath();
+  ctx.ellipse(cx,cy,w/2,h/2,0,0,Math.PI*2);
+  ctx.fill();
+
+  // ほんのり影（下面を少し暗く）
+  const sg=ctx.createRadialGradient(cx,cy+h*0.25,0,cx,cy+h*0.25,w*0.38);
+  sg.addColorStop(0,'rgba(180,200,220,0.18)');
+  sg.addColorStop(1,'rgba(180,200,220,0)');
+  ctx.fillStyle=sg;
+  ctx.beginPath();
+  ctx.ellipse(cx,cy+h*0.18,w/2*0.75,h/2*0.55,0,0,Math.PI*2);
+  ctx.fill();
+}
+
+/* ── Draw rocket ── */
+function drawRocket(ctx,thrusting,glow){
+  const BW=14, BH=54, NOSE=26;
+
+  if(glow){ctx.shadowBlur=16;ctx.shadowColor='rgba(180,220,255,0.6)';}
+
+  // --- Body ---
+  // Metal gradient effect
+  const bodyGrad=ctx.createLinearGradient(-BW/2,0,BW/2,0);
+  bodyGrad.addColorStop(0,'#8aa8bc');
+  bodyGrad.addColorStop(0.35,'#ddeeff');
+  bodyGrad.addColorStop(0.65,'#cce0f0');
+  bodyGrad.addColorStop(1,'#7090a8');
+  ctx.fillStyle=bodyGrad;
+  ctx.fillRect(-BW/2,-BH,BW,BH);
+
+  // Body rivets / panel lines
+  ctx.strokeStyle='rgba(100,140,160,0.5)';
+  ctx.lineWidth=0.8;
+  for(let yi=-BH+12;yi<0;yi+=14){
+    ctx.beginPath();ctx.moveTo(-BW/2,yi);ctx.lineTo(BW/2,yi);ctx.stroke();
+  }
+
+  // --- Nose cone ---
+  const noseGrad=ctx.createLinearGradient(-BW/2,-BH,BW/2,-BH-NOSE);
+  noseGrad.addColorStop(0,'#b8d4e8');
+  noseGrad.addColorStop(1,'#e8f4ff');
+  ctx.fillStyle=noseGrad;
+  ctx.beginPath();
+  ctx.moveTo(-BW/2,-BH);
+  ctx.quadraticCurveTo(-BW*0.3,-BH-NOSE*0.5,0,-BH-NOSE);
+  ctx.quadraticCurveTo(BW*0.3,-BH-NOSE*0.5,BW/2,-BH);
+  ctx.closePath();ctx.fill();
+
+  // Nose tip red
+  ctx.fillStyle='#ee3311';
+  ctx.beginPath();
+  ctx.arc(0,-BH-NOSE+3,3.5,0,Math.PI*2);
+  ctx.fill();
+
+  // --- Porthole ──
+  ctx.shadowBlur=0;
+  ctx.fillStyle='rgba(20,30,40,0.8)';
+  ctx.beginPath();ctx.arc(0,-BH+16,5.5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#22ddff';
+  ctx.shadowBlur=8;ctx.shadowColor='#22ddff';
+  ctx.beginPath();ctx.arc(0,-BH+16,4,0,Math.PI*2);ctx.fill();
+  // Shine
+  ctx.fillStyle='rgba(255,255,255,0.5)';
+  ctx.shadowBlur=0;
+  ctx.beginPath();ctx.arc(-1.5,-BH+14.5,1.5,0,Math.PI*2);ctx.fill();
+
+  // --- Fins ---
+  const finGrad=ctx.createLinearGradient(-BW/2,0,-BW/2-16,18);
+  finGrad.addColorStop(0,'#7a9ab0');
+  finGrad.addColorStop(1,'#4a6a7a');
+  ctx.fillStyle=finGrad;
+  // Left fin
+  ctx.beginPath();
+  ctx.moveTo(-BW/2,-4);
+  ctx.lineTo(-BW/2-16,18);
+  ctx.lineTo(-BW/2,16);
+  ctx.closePath();ctx.fill();
+  // Right fin
+  const finGradR=ctx.createLinearGradient(BW/2,0,BW/2+16,18);
+  finGradR.addColorStop(0,'#7a9ab0');
+  finGradR.addColorStop(1,'#4a6a7a');
+  ctx.fillStyle=finGradR;
+  ctx.beginPath();
+  ctx.moveTo(BW/2,-4);
+  ctx.lineTo(BW/2+16,18);
+  ctx.lineTo(BW/2,16);
+  ctx.closePath();ctx.fill();
+
+  // --- Nozzle ---
+  ctx.fillStyle='#445566';
+  ctx.fillRect(-BW/2-2,0,BW+4,8);
+  // Bell curve shape
+  const bellGrad=ctx.createRadialGradient(0,10,2,0,10,10);
+  bellGrad.addColorStop(0,'#667788');
+  bellGrad.addColorStop(1,'#334455');
+  ctx.fillStyle=bellGrad;
+  ctx.beginPath();
+  ctx.moveTo(-BW/2+2,7);
+  ctx.lineTo(-BW/2-1,16);
+  ctx.lineTo(BW/2+1,16);
+  ctx.lineTo(BW/2-2,7);
+  ctx.closePath();ctx.fill();
+  // Inner nozzle dark
+  ctx.fillStyle='#1a2530';
+  ctx.beginPath();
+  ctx.ellipse(0,16,5,2.5,0,0,Math.PI*2);
+  ctx.fill();
+
+  // --- Engine flame ---
+  if(thrusting){
+    const flicker=0.85+Math.random()*0.3;
+    const fH=(45+Math.random()*25)*flicker;
+    const fW=(BW*0.6+Math.random()*BW*0.3)*flicker;
+    const flameG=ctx.createLinearGradient(0,16,0,16+fH);
+    flameG.addColorStop(0,'rgba(255,255,220,1)');
+    flameG.addColorStop(0.15,'rgba(255,200,50,0.95)');
+    flameG.addColorStop(0.45,'rgba(255,100,0,0.8)');
+    flameG.addColorStop(0.75,'rgba(200,40,0,0.5)');
+    flameG.addColorStop(1,'rgba(150,0,0,0)');
+    ctx.shadowBlur=30;ctx.shadowColor='#ff6600';
+    ctx.fillStyle=flameG;
+    ctx.beginPath();
+    ctx.moveTo(-fW/2,16);
+    ctx.quadraticCurveTo(-fW*0.3,16+fH*0.45,0,16+fH);
+    ctx.quadraticCurveTo(fW*0.3,16+fH*0.45,fW/2,16);
+    ctx.closePath();ctx.fill();
+    // Inner bright core
+    const coreG=ctx.createLinearGradient(0,16,0,16+fH*0.3);
+    coreG.addColorStop(0,'rgba(255,255,255,0.9)');
+    coreG.addColorStop(1,'rgba(255,255,200,0)');
+    ctx.shadowBlur=0;
+    ctx.fillStyle=coreG;
+    ctx.beginPath();
+    ctx.moveTo(-fW*0.2,16);
+    ctx.quadraticCurveTo(0,16+fH*0.25,fW*0.2,16);
+    ctx.closePath();ctx.fill();
+  }
+
+  if(glow) ctx.shadowBlur=0;
+}
+
+/* ──────────────────────────────────────────
+   MAIN LOOP
+────────────────────────────────────────── */
+let lastTs=null;
+function loop(ts){
+  if(!lastTs) lastTs=ts;
+  const dt=Math.min((ts-lastTs)/1000,0.05);
+  lastTs=ts;
+  frame++;
+  if(phase!=='MENU'&&rocket&&!rocket.crashed) updatePhysics(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Boot
+resize();
+initRocket();
+showMenu();
+requestAnimationFrame(loop);
+
+})();
+</script>
+</body>
+</html>
