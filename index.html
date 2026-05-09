@@ -449,7 +449,7 @@ window.addEventListener('keyup',e=>{keys[e.code]=false;});
 /* ダブルタップ防止（iOS）— 仮想ボタンは除外して干渉しない */
 let lastTap=0;
 document.addEventListener('touchstart',e=>{
-  if(e.target.closest&&e.target.closest('#vctrl')) return;
+  if(e.target.closest&&(e.target.closest('#vctrl')||e.target.closest('button'))) return;
   const now=Date.now();
   if(now-lastTap<300) e.preventDefault();
   lastTap=now;
