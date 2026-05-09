@@ -457,17 +457,21 @@ document.addEventListener('touchstart',e=>{
 document.addEventListener('dblclick',e=>e.preventDefault());
 document.addEventListener('contextmenu',e=>e.preventDefault());
 
-/* 仮想コントローラー（bindPointer方式） */
+/* 仮想コントローラー（iOS touchstart優先方式） */
 function bindPointer(el,codes){
-  el.addEventListener('pointerdown',e=>{
-    e.preventDefault();
-    el.setPointerCapture(e.pointerId);
+  const start=e=>{
+    if(e.cancelable)e.preventDefault();
     codes.forEach(c=>{keys[c]=true;});
     el.classList.add('pressed');
-  },{passive:false});
-  const up=()=>{codes.forEach(c=>{keys[c]=false;});el.classList.remove('pressed');};
-  el.addEventListener('pointerup',up);
-  el.addEventListener('pointercancel',up);
+  };
+  const end=()=>{codes.forEach(c=>{keys[c]=false;});el.classList.remove('pressed');};
+  // iOS: touchstart/touchend を使う（pointerdown より確実）
+  el.addEventListener('touchstart',start,{passive:false});
+  el.addEventListener('touchend',end);
+  el.addEventListener('touchcancel',end);
+  // PC: pointerdown（touch以外のみ）
+  el.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')return;start(e);},{passive:false});
+  el.addEventListener('pointerup',e=>{if(e.pointerType==='touch')return;end();});
 }
 
 /* タッチデバイス検出 → コントローラー表示 */
@@ -481,19 +485,25 @@ bindPointer(document.getElementById('cv-right'),  ['ArrowRight']);
 /* ──────────────────────────────────────────
    MENU / GAME FLOW
 ────────────────────────────────────────── */
+/* iOS対応ボタンバインド（touchstart優先） */
+function bindBtn(el,fn){
+  let _t=false;
+  el.addEventListener('touchstart',e=>{e.preventDefault();_t=true;fn.call(el);},{passive:false});
+  el.addEventListener('click',function(){if(_t){_t=false;return;}fn.call(this);});
+}
 document.querySelectorAll('[data-m]').forEach(b=>{
-  b.addEventListener('click',()=>startMission(b.dataset.m));
+  bindBtn(b,()=>startMission(b.dataset.m));
 });
-document.getElementById('btn-edu').addEventListener('click',function(){
+bindBtn(document.getElementById('btn-edu'),function(){
   eduMode=!eduMode;
   this.textContent=`物理モード: ${eduMode?'ON':'OFF'}`;
 });
-document.getElementById('btn-assist').addEventListener('click',function(){
+bindBtn(document.getElementById('btn-assist'),function(){
   assistMode=!assistMode;
   this.textContent=`姿勢アシスト: ${assistMode?'ON':'OFF'}`;
 });
-document.getElementById('btn-restart').addEventListener('click',resetGame);
-document.getElementById('btn-back').addEventListener('click',showMenu);
+bindBtn(document.getElementById('btn-restart'),resetGame);
+bindBtn(document.getElementById('btn-back'),showMenu);
 
 function showMenu(){
   phase='MENU';
